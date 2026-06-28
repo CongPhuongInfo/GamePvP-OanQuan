@@ -95,37 +95,47 @@ Public Class Form1
     End Sub
 
     Private Sub BuildCellRects()
-        ' Neu la Player2 (localPlayer=1): dao nguoc - hang minh (7..11) xuong duoi, hang P1 len tren
-        ' Neu la Player1 hoac chua xac dinh: layout mac dinh - hang P1 (1..5) o duoi
-        Dim myRowY As Integer
-        Dim oppRowY As Integer
-        Dim myStart As Integer   ' index bat dau hang minh
-        Dim oppStart As Integer  ' index bat dau hang doi thu
+        ' Layout co dinh cho ca 2 nguoi choi - nhin cung 1 huong
+        ' Hang duoi: P1 (o 1..5), hang tren: P2 (o 7..11)
+        ' Vong CCW (index tang): 0->1->2->3->4->5->6->7->8->9->10->11->0
+        ' Tren man hinh: Phai = CCW (tang), Trai = CW (giam)
+        '
+        ' [Q0=do] [ 1][ 2][ 3][ 4][ 5] [Q6=xanh]  <- hang duoi (P1)
+        ' [Q0=do] [ 7][ 8][ 9][10][11] [Q6=xanh]  <- hang tren (P2)
+
+        Dim i As Integer
 
         If localPlayer = 1 Then
-            ' P2 nhin: hang minh (7..11) o duoi, hang P1 (1..5) o tren
-            myRowY = ROW_BOT : oppRowY = ROW_TOP
-            myStart = 7 : oppStart = 1
+            ' === P2 nhin: hang minh (7..11) o DUOI, hang P1 (1..5) o TREN ===
+            ' Quan: Q6 ben trai, Q0 ben phai (flip ngang)
+            cellRect(6) = New Rectangle(3, ROW_TOP, QUAN_W, QUAN_H)
+            cellRect(0) = New Rectangle(BW - QUAN_W - 3, ROW_TOP, QUAN_W, QUAN_H)
+
+            ' Hang duoi (cua P2): o 7,8,9,10,11 tu trai->phai
+            For i = 0 To 4
+                cellRect(7 + i) = New Rectangle(DAN_START_X + i * (DAN_W + 3), ROW_BOT, DAN_W, DAN_H)
+            Next i
+
+            ' Hang tren (P1): o 5,4,3,2,1 tu trai->phai (vong oval: hang tren nguoc chieu)
+            For i = 0 To 4
+                cellRect(5 - i) = New Rectangle(DAN_START_X + i * (DAN_W + 3), ROW_TOP, DAN_W, DAN_H)
+            Next i
         Else
-            ' P1 hoac default: hang P1 (1..5) o duoi, hang P2 (7..11) o tren
-            myRowY = ROW_BOT : oppRowY = ROW_TOP
-            myStart = 1 : oppStart = 7
+            ' === P1 nhin: hang minh (1..5) o DUOI, hang P2 (7..11) o TREN ===
+            ' Quan: Q0 ben trai, Q6 ben phai
+            cellRect(0) = New Rectangle(3, ROW_TOP, QUAN_W, QUAN_H)
+            cellRect(6) = New Rectangle(BW - QUAN_W - 3, ROW_TOP, QUAN_W, QUAN_H)
+
+            ' Hang duoi (cua P1): o 1,2,3,4,5 tu trai->phai
+            For i = 0 To 4
+                cellRect(1 + i) = New Rectangle(DAN_START_X + i * (DAN_W + 3), ROW_BOT, DAN_W, DAN_H)
+            Next i
+
+            ' Hang tren (P2): o 11,10,9,8,7 tu trai->phai (vong oval: hang tren nguoc chieu)
+            For i = 0 To 4
+                cellRect(11 - i) = New Rectangle(DAN_START_X + i * (DAN_W + 3), ROW_TOP, DAN_W, DAN_H)
+            Next i
         End If
-
-        ' O Quan luon o 2 ben
-        cellRect(0) = New Rectangle(3, ROW_TOP, QUAN_W, QUAN_H)
-        cellRect(6) = New Rectangle(BW - QUAN_W - 3, ROW_TOP, QUAN_W, QUAN_H)
-
-        ' Hang "duoi" (cua minh): tu trai sang phai
-        Dim i As Integer
-        For i = 0 To 4
-            cellRect(myStart + i) = New Rectangle(DAN_START_X + i * (DAN_W + 3), myRowY, DAN_W, DAN_H)
-        Next i
-
-        ' Hang "tren" (doi thu): tu trai sang phai
-        For i = 0 To 4
-            cellRect(oppStart + i) = New Rectangle(DAN_START_X + i * (DAN_W + 3), oppRowY, DAN_W, DAN_H)
-        Next i
     End Sub
 
     Private Sub InitUI()
@@ -279,39 +289,57 @@ Public Class Form1
         Dim isSelected As Boolean = (idx = selectedCell)
         Dim isHL As Boolean = (idx = animHighlight)
 
-        ' Mau nen
-        Dim fill As Color
-        If isHL Then
-            fill = Color.FromArgb(255, 235, 60)
-        ElseIf isSelected Then
-            fill = Color.FromArgb(130, 200, 130)
-        ElseIf isQuan Then
-            fill = Color.FromArgb(190, 140, 55)
-        ElseIf game IsNot Nothing AndAlso game.OwnerOf(idx) = 0 Then
-            fill = Color.FromArgb(175, 205, 240)
-        ElseIf game IsNot Nothing AndAlso game.OwnerOf(idx) = 1 Then
-            fill = Color.FromArgb(175, 230, 180)
-        Else
-            fill = Color.FromArgb(195, 170, 115)
+        ' Mau nen (o Quan se tu fill rieng ben duoi)
+        If Not isQuan Then
+            Dim fill As Color
+            If isHL Then
+                fill = Color.FromArgb(255, 235, 60)
+            ElseIf isSelected Then
+                fill = Color.FromArgb(130, 200, 130)
+            ElseIf game IsNot Nothing AndAlso game.OwnerOf(idx) = 0 Then
+                fill = Color.FromArgb(175, 205, 240)
+            ElseIf game IsNot Nothing AndAlso game.OwnerOf(idx) = 1 Then
+                fill = Color.FromArgb(175, 230, 180)
+            Else
+                fill = Color.FromArgb(195, 170, 115)
+            End If
+            Using br As New SolidBrush(fill)
+                g.FillRectangle(br, r)
+            End Using
+            Dim bw As Integer = If(isSelected OrElse isHL, 3, 1)
+            Dim bc As Color = If(isSelected, Color.DarkGreen, If(isHL, Color.OrangeRed, Color.FromArgb(100, 75, 30)))
+            Using p As New Pen(bc, bw)
+                g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1)
+            End Using
         End If
 
-        Using br As New SolidBrush(fill)
-            g.FillRectangle(br, r)
-        End Using
-
-        Dim bw As Integer = If(isSelected OrElse isHL, 3, 1)
-        Dim bc As Color = If(isSelected, Color.DarkGreen, If(isHL, Color.OrangeRed, Color.FromArgb(100, 75, 30)))
-        Using p As New Pen(bc, bw)
-            g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1)
-        End Using
-
-        ' Ten o Quan
+        ' Ve o Quan voi mau va nhan rieng biet
         If isQuan Then
+            ' Quan 0 (trai) = do dam - thuoc P1; Quan 6 (phai) = xanh duong dam - thuoc P2
+            Dim isQuan0 As Boolean = (idx = 0)
+            Dim gradTop As Color = If(isQuan0, Color.FromArgb(200, 60, 40), Color.FromArgb(40, 80, 180))
+            Dim gradBot As Color = If(isQuan0, Color.FromArgb(140, 30, 20), Color.FromArgb(20, 50, 130))
+            Using gb As New System.Drawing.Drawing2D.LinearGradientBrush(r, gradTop, gradBot, System.Drawing.Drawing2D.LinearGradientMode.Vertical)
+                g.FillRectangle(gb, r)
+            End Using
+            ' Vien ngoai noi bat
+            Dim borderClr As Color = If(isQuan0, Color.FromArgb(255, 120, 80), Color.FromArgb(100, 160, 255))
+            Using p2 As New Pen(borderClr, 3)
+                g.DrawRectangle(p2, r.X + 1, r.Y + 1, r.Width - 3, r.Height - 3)
+            End Using
+            ' Nhan "QUAN" + so hieu
+            Dim qLabel As String = If(isQuan0, "QUAN", "QUAN")
+            Dim qOwner As String = If(isQuan0, "P1", "P2")
             Using fnt As New Font("Segoe UI", 9.0!, FontStyle.Bold)
-            Using br As New SolidBrush(Color.DarkRed)
-                Dim s As String = "QUAN"
-                Dim sz As SizeF = g.MeasureString(s, fnt)
-                g.DrawString(s, fnt, br, r.Left + (r.Width - sz.Width) / 2.0F, r.Top + 4.0F)
+            Using br As New SolidBrush(Color.White)
+                Dim sz As SizeF = g.MeasureString(qLabel, fnt)
+                g.DrawString(qLabel, fnt, br, r.Left + (r.Width - sz.Width) / 2.0F, r.Top + 6.0F)
+            End Using
+            End Using
+            Using fnt2 As New Font("Segoe UI", 8.0!, FontStyle.Bold)
+            Using br2 As New SolidBrush(Color.FromArgb(220, 220, 100))
+                Dim sz2 As SizeF = g.MeasureString(qOwner, fnt2)
+                g.DrawString(qOwner, fnt2, br2, r.Left + (r.Width - sz2.Width) / 2.0F, r.Top + 22.0F)
             End Using
             End Using
         End If
@@ -511,23 +539,33 @@ Public Class Form1
     '  HUONG DI
     ' ============================================================
     Private Sub BtnDirLeft_Click(sender As Object, e As EventArgs)
-        ExecuteMove(If(localPlayer = 0, OAQGame.GameDirection.CW, OAQGame.GameDirection.CCW))
+        ' Trai = CW (index giam) cho ca P1 lan P2
+        ' P1: 1->Q0->11->10->9->8->7->Q6->5->4->3->2
+        ' P2: 7->Q6->5->4->3->2->1->Q0->11->10->9->8
+        ExecuteMove(OAQGame.GameDirection.CW)
     End Sub
 
     Private Sub BtnDirRight_Click(sender As Object, e As EventArgs)
-        ExecuteMove(If(localPlayer = 0, OAQGame.GameDirection.CCW, OAQGame.GameDirection.CW))
+        ' Phai = CCW (index tang) cho ca P1 lan P2
+        ' P1: 1->2->3->4->5->Q6->7->8->9->10->11->Q0
+        ' P2: 7->8->9->10->11->Q0->1->2->3->4->5->Q6
+        ExecuteMove(OAQGame.GameDirection.CCW)
     End Sub
 
     Private Sub ExecuteMove(dir As OAQGame.GameDirection)
         If selectedCell = -1 OrElse animIsRunning Then Return
         btnDirLeft.Enabled = False : btnDirRight.Enabled = False
 
-        If localPlayer <> 0 Then
+        If localPlayer = 0 Then
+            ' Host: tu chay animation (se gui ANIMSTART/STEP cho client trong StartAnimation)
+            StartAnimation(localPlayer, selectedCell, dir)
+        Else
+            ' Client: chi gui MOVEREQ, khong tu chay animation
+            ' Host se StartAnimation va gui ANIMSTART/STEP ve cho client
             Dim dCode As Integer = If(dir = OAQGame.GameDirection.CCW, 0, 1)
             peer.SendLine("MOVEREQ:" & localPlayer.ToString() & ":" & selectedCell.ToString() & ":" & dCode.ToString())
+            selectedCell = -1
         End If
-
-        StartAnimation(localPlayer, selectedCell, dir)
     End Sub
 
     ' ============================================================
@@ -650,7 +688,6 @@ Public Class Form1
         animIsRunning = True
         animHighlight = -1
 
-        ' Khoi tao animSim = game hien tai
         Dim i As Integer
         For i = 0 To 11
             animSim(i) = game.Stones(i)
@@ -661,13 +698,27 @@ Public Class Form1
         animScore2 = game.Score(1)
 
         selectedCell = -1
+
+        ' Host gui ANIMSTART cho client biet khoi tao animSim
+        If isHost Then
+            Dim sb As New System.Text.StringBuilder()
+            sb.Append("ANIMSTART:")
+            sb.Append(player.ToString() & ":" & cellIdx.ToString() & ":")
+            For i = 0 To 11
+                sb.Append(game.Stones(i).ToString())
+                If i < 11 Then sb.Append(",")
+            Next i
+            If peer IsNot Nothing AndAlso peer.IsConnected Then
+                peer.SendLine(sb.ToString())
+            End If
+        End If
+
         boardPanel.Invalidate()
         animTimer.Start()
     End Sub
 
     Private Sub AnimTimer_Tick(sender As Object, e As EventArgs)
         If animPos >= animQueue.Count Then
-            ' Xong animation
             animTimer.Stop()
             animIsRunning = False
             animHighlight = -1
@@ -683,35 +734,42 @@ Public Class Form1
                 Else
                     AppendLog("Loi: " & errMsg)
                 End If
+                If peer IsNot Nothing AndAlso peer.IsConnected Then
+                    peer.SendLine("ANIMEND")
+                End If
             End If
 
             RefreshUI()
             Return
         End If
 
-        Dim step As AnimStep = animQueue(animPos)
+        Dim aStep As AnimStep = animQueue(animPos)
         animPos += 1
 
-        Select Case step.EvType
+        Select Case aStep.EvType
             Case AnimEvent.Drop
-                animSim(step.CellIdx) += 1   ' vien roi vao o
-                animHand = step.HandAfter
-                animHandCell = step.CellIdx
-                animHighlight = step.CellIdx
+                animSim(aStep.CellIdx) += 1
+                animHand = aStep.HandAfter
+                animHandCell = aStep.CellIdx
+                animHighlight = aStep.CellIdx
 
             Case AnimEvent.PickUp
-                animSim(step.CellIdx) = 0    ' boc het o
-                animHand = step.HandAfter
-                animHandCell = step.CellIdx
-                animHighlight = step.CellIdx
+                animSim(aStep.CellIdx) = 0
+                animHand = aStep.HandAfter
+                animHandCell = aStep.CellIdx
+                animHighlight = aStep.CellIdx
 
             Case AnimEvent.Capture
-                animSim(step.CellIdx) = 0    ' an sach o
-                ' cap nhat diem hien thi
+                animSim(aStep.CellIdx) = 0
                 animScore1 = game.Score(0)
                 animScore2 = game.Score(1)
-                animHighlight = step.CellIdx
+                animHighlight = aStep.CellIdx
         End Select
+
+        ' Host gui tung buoc anim cho client
+        If isHost AndAlso peer IsNot Nothing AndAlso peer.IsConnected Then
+            peer.SendLine("ANIMSTEP:" & CInt(aStep.EvType).ToString() & ":" & aStep.CellIdx.ToString() & ":" & aStep.HandAfter.ToString())
+        End If
 
         boardPanel.Invalidate()
         pnlScore1.Invalidate()
@@ -770,10 +828,85 @@ Public Class Form1
             If game Is Nothing Then game = New OAQGame()
             game.Deserialize(line.Substring(6))
             If Not pnlGame.Visible Then ShowGamePanel()
+            ' Reset trang thai anim: STATE la trang thai cuoi cung da hoan tat
+            animIsRunning = False
+            animHighlight = -1
+            animHand = 0
+            animHandCell = -1
             RefreshUI()
             AppendLog(game.LastLog)
             CheckAndShowGameOver()
+        ElseIf line.StartsWith("ANIMSTART:") Then
+            ' Client nhan lenh bat dau animation cua host
+            If Not isHost Then
+                Dim parts As String() = line.Substring(10).Split(":"c)
+                If parts.Length >= 3 Then
+                    ' parts(0)=player, parts(1)=cellIdx, parts(2)=stones csv
+                    Integer.TryParse(parts(1), animHandCell)
+                    Dim stonesParts As String() = parts(2).Split(","c)
+                    Dim i As Integer
+                    For i = 0 To Math.Min(11, stonesParts.Length - 1)
+                        Integer.TryParse(stonesParts(i), animSim(i))
+                    Next i
+                    animHand = 0
+                    animHighlight = -1
+                    animIsRunning = True
+                    animScore1 = If(game IsNot Nothing, game.Score(0), 0)
+                    animScore2 = If(game IsNot Nothing, game.Score(1), 0)
+                    boardPanel.Invalidate()
+                End If
+            End If
+        ElseIf line.StartsWith("ANIMSTEP:") Then
+            ' Client nhan tung buoc anim tu host
+            If Not isHost Then
+                Dim parts As String() = line.Substring(9).Split(":"c)
+                If parts.Length >= 3 Then
+                    Dim evT, cellI, handA As Integer
+                    Integer.TryParse(parts(0), evT)
+                    Integer.TryParse(parts(1), cellI)
+                    Integer.TryParse(parts(2), handA)
+                    Select Case CType(evT, AnimEvent)
+                        Case AnimEvent.Drop
+                            animSim(cellI) += 1
+                            animHand = handA
+                            animHandCell = cellI
+                            animHighlight = cellI
+                        Case AnimEvent.PickUp
+                            animSim(cellI) = 0
+                            animHand = handA
+                            animHandCell = cellI
+                            animHighlight = cellI
+                        Case AnimEvent.Capture
+                            animSim(cellI) = 0
+                            animHighlight = cellI
+                    End Select
+                    boardPanel.Invalidate()
+                    pnlScore1.Invalidate()
+                    pnlScore2.Invalidate()
+                End If
+            End If
         ElseIf line.StartsWith("MOVEREQ:") Then
+            ' Host nhan nuoc di tu client (Player 2)
+            If isHost Then
+                Dim parts As String() = line.Substring(8).Split(":"c)
+                If parts.Length >= 3 Then
+                    Dim p, si, d As Integer
+                    Integer.TryParse(parts(0), p)
+                    Integer.TryParse(parts(1), si)
+                    Integer.TryParse(parts(2), d)
+                    Dim dir As OAQGame.GameDirection = If(d = 1, OAQGame.GameDirection.CW, OAQGame.GameDirection.CCW)
+                    StartAnimation(p, si, dir)
+                End If
+            End If
+        ElseIf line.StartsWith("ANIMEND") Then
+            If Not isHost Then
+                animIsRunning = False
+                animHighlight = -1
+                animHand = 0
+                animHandCell = -1
+                boardPanel.Invalidate()
+                RefreshUI()
+            End If
             If isHost Then
                 Dim parts As String() = line.Substring(8).Split(":"c)
                 If parts.Length >= 3 Then
