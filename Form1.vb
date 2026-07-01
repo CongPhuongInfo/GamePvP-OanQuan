@@ -19,6 +19,12 @@ Public Class Form1
     Private localPlayer As Integer = -1
     Private selectedCell As Integer = -1
 
+    ' === Che do choi voi AI (khong qua mang) ===
+    Private isAIMode As Boolean = False
+    Private aiDifficulty As Integer = 1 ' 0=De, 1=Trung binh, 2=Kho
+    Private aiMoveTimer As System.Windows.Forms.Timer
+    Private Const AI_MOVE_DELAY_MS As Integer = 700
+
     ' === UI connect ===
     Private pnlConnect As Panel
     Private txtPort As TextBox
@@ -26,6 +32,8 @@ Public Class Form1
     Private btnHost As Button
     Private btnJoin As Button
     Private lblStatus As Label
+    Private cboAIDifficulty As ComboBox
+    Private btnPlayAI As Button
 
     ' === UI game ===
     Private pnlGame As Panel
@@ -36,9 +44,9 @@ Public Class Form1
     Private btnDirRight As Button
     Private btnRestart As Button
     Private lstLog As ListBox
-    ' Vung diem 2 nguoi
-    Private pnlScore1 As Panel   ' Player1 goc trai duoi
-    Private pnlScore2 As Panel   ' Player2 goc phai duoi
+    ' Kho da an - nay dat ngay duoi tung card trong sidebar (xem BuildSidePanel)
+    Private pnlScoreMe As Panel
+    Private pnlScoreOpp As Panel
 
     ' === Board geometry ===
     ' Layout board (index):
@@ -54,6 +62,25 @@ Public Class Form1
     Private Const ROW_TOP As Integer = 3
     Private Const ROW_BOT As Integer = 160
     Private Const DAN_START_X As Integer = 81
+
+    ' === Sidebar: card nguoi choi + khung chat (kieu XOOnline/MineForm) ===
+    Private Const SIDE_GAP As Integer = 15
+    Private Const SIDE_W As Integer = 220
+    Private Const SIDE_TOP As Integer = 55
+    Private Const SIDE_BOTTOM As Integer = 661
+    Private Const CARD_H As Integer = 60
+    Private Const CARD_GAP As Integer = 8
+    Private Const KHO_H As Integer = 74
+
+    Private pnlCardMe As Panel
+    Private pnlCardOpp As Panel
+    Private lblCardMeInfo As Label
+    Private lblCardOppInfo As Label
+
+    Private pnlChat As Panel
+    Private lstChat As ListBox
+    Private txtChatInput As TextBox
+    Private btnSend As Button
 
     Private cellRect(CELL_COUNT - 1) As Rectangle
 
@@ -140,7 +167,7 @@ Public Class Form1
 
     Private Sub InitUI()
         Me.Text = "O An Quan Online - 2CongLC"
-        Me.ClientSize = New Size(BW, 680)
+        Me.ClientSize = New Size(BW + SIDE_GAP + SIDE_W, 680)
         Me.FormBorderStyle = FormBorderStyle.FixedSingle
         Me.MaximizeBox = False
         Me.StartPosition = FormStartPosition.CenterScreen
@@ -150,9 +177,19 @@ Public Class Form1
         animTimer.Interval = ANIM_DELAY_MS
         AddHandler animTimer.Tick, AddressOf AnimTimer_Tick
 
+        aiMoveTimer = New System.Windows.Forms.Timer()
+        aiMoveTimer.Interval = AI_MOVE_DELAY_MS
+        AddHandler aiMoveTimer.Tick, AddressOf AiMoveTimer_Tick
+
         BuildConnectPanel()
         BuildGamePanel()
+        BuildSidePanel()
         pnlGame.Visible = False
+        pnlCardMe.Visible = False
+        pnlCardOpp.Visible = False
+        pnlScoreMe.Visible = False
+        pnlScoreOpp.Visible = False
+        pnlChat.Visible = False
     End Sub
 
     ' ============================================================
@@ -188,9 +225,25 @@ Public Class Form1
         AddHandler btnJoin.Click, AddressOf BtnJoin_Click
         pnlConnect.Controls.Add(btnJoin)
 
-        lblStatus = New Label() : lblStatus.Location = New Point(280, 370) : lblStatus.AutoSize = True
+        Dim lAI As New Label() : lAI.Text = "Do kho AI:" : lAI.Location = New Point(340, 355) : lAI.AutoSize = True
+        pnlConnect.Controls.Add(lAI)
+        cboAIDifficulty = New ComboBox()
+        cboAIDifficulty.DropDownStyle = ComboBoxStyle.DropDownList
+        cboAIDifficulty.Location = New Point(430, 352) : cboAIDifficulty.Width = 110
+        cboAIDifficulty.Items.Add("De")
+        cboAIDifficulty.Items.Add("Trung binh")
+        cboAIDifficulty.Items.Add("Kho")
+        cboAIDifficulty.SelectedIndex = 1
+        pnlConnect.Controls.Add(cboAIDifficulty)
+
+        btnPlayAI = New Button() : btnPlayAI.Text = "Choi voi may (AI)"
+        btnPlayAI.Location = New Point(340, 390) : btnPlayAI.Size = New Size(200, 38)
+        AddHandler btnPlayAI.Click, AddressOf BtnPlayAI_Click
+        pnlConnect.Controls.Add(btnPlayAI)
+
+        lblStatus = New Label() : lblStatus.Location = New Point(280, 440) : lblStatus.AutoSize = True
         lblStatus.ForeColor = Color.DimGray
-        lblStatus.Text = "Host: bam 'Tao phong'." & Environment.NewLine & "Khach: nhap IP roi bam 'Vao phong'."
+        lblStatus.Text = "Host: bam 'Tao phong'." & Environment.NewLine & "Khach: nhap IP roi bam 'Vao phong'." & Environment.NewLine & "Hoac choi mot minh voi AI: chon do kho roi bam 'Choi voi may'."
         pnlConnect.Controls.Add(lblStatus)
 
         Me.Controls.Add(pnlConnect)
@@ -223,25 +276,7 @@ Public Class Form1
         AddHandler boardPanel.MouseDown, AddressOf BoardPanel_MouseDown
         pnlGame.Controls.Add(boardPanel)
 
-        ' Vung diem Player1 (goc trai)
-        pnlScore1 = New Panel()
-        pnlScore1.Location = New Point(10, 55 + BH + 10)
-        pnlScore1.Size = New Size(300, 120)
-        pnlScore1.BackColor = Color.FromArgb(200, 225, 255)
-        pnlScore1.BorderStyle = BorderStyle.FixedSingle
-        AddHandler pnlScore1.Paint, AddressOf PnlScore1_Paint
-        pnlGame.Controls.Add(pnlScore1)
-
-        ' Vung diem Player2 (goc phai)
-        pnlScore2 = New Panel()
-        pnlScore2.Location = New Point(BW - 310, 55 + BH + 10)
-        pnlScore2.Size = New Size(300, 120)
-        pnlScore2.BackColor = Color.FromArgb(200, 255, 210)
-        pnlScore2.BorderStyle = BorderStyle.FixedSingle
-        AddHandler pnlScore2.Paint, AddressOf PnlScore2_Paint
-        pnlGame.Controls.Add(pnlScore2)
-
-        Dim btnY As Integer = 55 + BH + 140
+        Dim btnY As Integer = 55 + BH + 20
         btnDirLeft = New Button() : btnDirLeft.Text = "Di TRAI"
         btnDirLeft.Location = New Point(310, btnY) : btnDirLeft.Size = New Size(130, 36) : btnDirLeft.Enabled = False
         AddHandler btnDirLeft.Click, AddressOf BtnDirLeft_Click
@@ -259,10 +294,153 @@ Public Class Form1
 
         lstLog = New ListBox()
         lstLog.Location = New Point(10, btnY + 46)
-        lstLog.Size = New Size(BW - 20, 100)
+        lstLog.Size = New Size(BW - 20, 220)
         pnlGame.Controls.Add(lstLog)
 
         Me.Controls.Add(pnlGame)
+    End Sub
+
+    ' ============================================================
+    '  SIDEBAR: CARD NGUOI CHOI + KHUNG CHAT (kieu XOOnline/MineForm)
+    ' ============================================================
+    Private Sub BuildSidePanel()
+        Dim sideX As Integer = BW + SIDE_GAP
+
+        pnlCardMe = BuildPlayerCard("BAN", Color.DodgerBlue, New Point(sideX, SIDE_TOP), lblCardMeInfo)
+        Me.Controls.Add(pnlCardMe)
+
+        pnlScoreMe = New Panel()
+        pnlScoreMe.Location = New Point(sideX, SIDE_TOP + CARD_H + CARD_GAP)
+        pnlScoreMe.Size = New Size(SIDE_W, KHO_H)
+        pnlScoreMe.BackColor = Color.FromArgb(200, 225, 255)
+        pnlScoreMe.BorderStyle = BorderStyle.FixedSingle
+        AddHandler pnlScoreMe.Paint, AddressOf PnlScoreMe_Paint
+        Me.Controls.Add(pnlScoreMe)
+
+        Dim cardOppY As Integer = SIDE_TOP + CARD_H + CARD_GAP + KHO_H + CARD_GAP
+        pnlCardOpp = BuildPlayerCard("DOI THU", Color.OrangeRed, New Point(sideX, cardOppY), lblCardOppInfo)
+        Me.Controls.Add(pnlCardOpp)
+
+        pnlScoreOpp = New Panel()
+        pnlScoreOpp.Location = New Point(sideX, cardOppY + CARD_H + CARD_GAP)
+        pnlScoreOpp.Size = New Size(SIDE_W, KHO_H)
+        pnlScoreOpp.BackColor = Color.FromArgb(255, 220, 210)
+        pnlScoreOpp.BorderStyle = BorderStyle.FixedSingle
+        AddHandler pnlScoreOpp.Paint, AddressOf PnlScoreOpp_Paint
+        Me.Controls.Add(pnlScoreOpp)
+
+        Dim chatY As Integer = cardOppY + CARD_H + CARD_GAP + KHO_H + CARD_GAP
+        BuildChatPanel(sideX, chatY, SIDE_BOTTOM - chatY)
+    End Sub
+
+    ' Tao 1 the (card) thong tin nguoi choi: thanh mau | ten | trang thai.
+    Private Function BuildPlayerCard(title As String, accent As Color, loc As Point, ByRef infoLabelOut As Label) As Panel
+        Dim p As New Panel()
+        p.Location = loc
+        p.Size = New Size(SIDE_W, CARD_H)
+        p.BackColor = Color.FromArgb(35, 35, 35)
+
+        Dim bar As New Panel()
+        bar.Location = New Point(0, 0)
+        bar.Size = New Size(4, CARD_H)
+        bar.BackColor = accent
+        p.Controls.Add(bar)
+
+        Dim lblTitle As New Label()
+        lblTitle.Text = title
+        lblTitle.Font = New Font("Segoe UI", 9.0!, FontStyle.Bold)
+        lblTitle.ForeColor = accent
+        lblTitle.Location = New Point(12, 6)
+        lblTitle.AutoSize = True
+        p.Controls.Add(lblTitle)
+
+        infoLabelOut = New Label()
+        infoLabelOut.Text = "-"
+        infoLabelOut.Font = New Font("Segoe UI", 9.0!)
+        infoLabelOut.ForeColor = Color.LightGray
+        infoLabelOut.Location = New Point(12, 26)
+        infoLabelOut.AutoSize = True
+        p.Controls.Add(infoLabelOut)
+
+        Return p
+    End Function
+
+    Private Sub BuildChatPanel(x As Integer, y As Integer, h As Integer)
+        pnlChat = New Panel()
+        pnlChat.Location = New Point(x, y)
+        pnlChat.Size = New Size(SIDE_W, h)
+        pnlChat.BackColor = Color.FromArgb(20, 20, 20)
+
+        lstChat = New ListBox()
+        lstChat.Location = New Point(0, 0)
+        lstChat.Size = New Size(SIDE_W, h - 32)
+        lstChat.BackColor = Color.FromArgb(35, 35, 35)
+        lstChat.ForeColor = Color.LightGray
+        lstChat.BorderStyle = BorderStyle.FixedSingle
+        pnlChat.Controls.Add(lstChat)
+
+        txtChatInput = New TextBox()
+        txtChatInput.Location = New Point(0, h - 27)
+        txtChatInput.Size = New Size(SIDE_W - 55, 25)
+        AddHandler txtChatInput.KeyDown, Sub(s As Object, ev As KeyEventArgs)
+            If ev.KeyCode = Keys.Enter Then
+                BtnSend_Click(s, EventArgs.Empty)
+                ev.Handled = True
+                ev.SuppressKeyPress = True
+            End If
+        End Sub
+        pnlChat.Controls.Add(txtChatInput)
+
+        btnSend = New Button()
+        btnSend.Text = "Gui"
+        btnSend.Location = New Point(SIDE_W - 50, h - 28)
+        btnSend.Size = New Size(50, 27)
+        btnSend.BackColor = Color.SteelBlue
+        btnSend.ForeColor = Color.White
+        btnSend.FlatStyle = FlatStyle.Flat
+        AddHandler btnSend.Click, AddressOf BtnSend_Click
+        pnlChat.Controls.Add(btnSend)
+
+        Me.Controls.Add(pnlChat)
+    End Sub
+
+    Private Sub BtnSend_Click(sender As Object, e As EventArgs)
+        If peer Is Nothing OrElse Not peer.IsConnected Then Return
+        If txtChatInput.Text.Trim() = "" Then Return
+        Dim msg As String = txtChatInput.Text.Trim().Replace(Chr(13), " ").Replace(Chr(10), " ")
+        Dim tag As String = If(localPlayer = 0, "Player 1", "Player 2")
+        AppendChat(tag & " (Ban): " & msg)
+        peer.SendLine("CHAT:" & tag & ":" & msg)
+        txtChatInput.Text = ""
+        txtChatInput.Focus()
+    End Sub
+
+    Private Sub AppendChat(msg As String)
+        If lstChat Is Nothing Then Return
+        lstChat.Items.Add(msg)
+        lstChat.TopIndex = Math.Max(0, lstChat.Items.Count - 1)
+    End Sub
+
+    ' Cap nhat noi dung 2 card "BAN" / "DOI THU" theo diem hien tai va vai tro.
+    Private Sub UpdateCardInfo()
+        If game Is Nothing OrElse localPlayer < 0 Then Return
+        Dim oppPlayer As Integer = 1 - localPlayer
+        Dim meRole As String = If(localPlayer = 0, "Player 1 (Host)", "Player 2 (Khach)")
+        Dim oppRole As String = If(oppPlayer = 0, "Player 1 (Host)", "Player 2 (Khach)")
+
+        lblCardMeInfo.Text = meRole
+        lblCardOppInfo.Text = oppRole
+
+        If Not game.GameOver AndAlso game.CurrentPlayer = localPlayer Then
+            lblCardMeInfo.ForeColor = Color.LimeGreen
+            lblCardOppInfo.ForeColor = Color.LightGray
+        ElseIf Not game.GameOver Then
+            lblCardMeInfo.ForeColor = Color.LightGray
+            lblCardOppInfo.ForeColor = Color.LimeGreen
+        Else
+            lblCardMeInfo.ForeColor = Color.LightGray
+            lblCardOppInfo.ForeColor = Color.LightGray
+        End If
     End Sub
 
     ' ============================================================
@@ -460,50 +638,53 @@ Public Class Form1
     ' ============================================================
     '  SCORE PANELS
     ' ============================================================
-    Private Sub PnlScore1_Paint(sender As Object, e As PaintEventArgs)
-        DrawScorePanel(e.Graphics, 0, pnlScore1.ClientRectangle)
+    Private Sub PnlScoreMe_Paint(sender As Object, e As PaintEventArgs)
+        Dim p As Integer = If(localPlayer < 0, 0, localPlayer)
+        DrawScorePanel(e.Graphics, p, pnlScoreMe.ClientRectangle)
     End Sub
 
-    Private Sub PnlScore2_Paint(sender As Object, e As PaintEventArgs)
-        DrawScorePanel(e.Graphics, 1, pnlScore2.ClientRectangle)
+    Private Sub PnlScoreOpp_Paint(sender As Object, e As PaintEventArgs)
+        Dim p As Integer = If(localPlayer < 0, 1, 1 - localPlayer)
+        DrawScorePanel(e.Graphics, p, pnlScoreOpp.ClientRectangle)
     End Sub
 
+    ' Ve kho quan da an cua 1 nguoi choi: tieu de nho + luoi vien da, tu dong xuong dong
+    ' cho vua chieu ngang panel, hien "+N" neu con quan chua ve het (do het cho hien thi).
     Private Sub DrawScorePanel(g As Graphics, player As Integer, r As Rectangle)
         g.SmoothingMode = SmoothingMode.AntiAlias
         Dim sc As Integer = If(animIsRunning, If(player = 0, animScore1, animScore2), If(game IsNot Nothing, game.Score(player), 0))
-        Dim name As String = If(player = 0, "Player 1 (Host)", "Player 2 (Khach)")
 
-        Using fnt As New Font("Segoe UI", 10.0!, FontStyle.Bold)
-        Using br As New SolidBrush(Color.FromArgb(50, 50, 80))
-            g.DrawString(name, fnt, br, 8.0F, 6.0F)
-        End Using
-        End Using
-
-        Using fnt As New Font("Segoe UI", 22.0!, FontStyle.Bold)
+        Using fnt As New Font("Segoe UI", 9.0!, FontStyle.Bold)
         Using br As New SolidBrush(Color.FromArgb(180, 40, 40))
-            g.DrawString(sc.ToString() & " diem", fnt, br, 8.0F, 28.0F)
+            g.DrawString("Kho: " & sc.ToString() & " quan", fnt, br, 8.0F, 4.0F)
         End Using
         End Using
 
-        ' Ve cac vien da an duoc (toi da 30 vien hien thi)
-        Dim shown As Integer = Math.Min(sc, 30)
         Dim sd As Integer = 10
-        Dim px As Integer = 8 : Dim py As Integer = 78
+        Dim px As Integer = 8 : Dim py As Integer = 22
+        Dim perRow As Integer = Math.Max(1, (r.Width - px - 5) \ (sd + 2))
+        Dim maxRows As Integer = Math.Max(1, (r.Height - py - 4) \ (sd + 2))
+        Dim maxShow As Integer = perRow * maxRows
+        Dim shown As Integer = Math.Min(sc, maxShow)
         Dim n As Integer
+
         For n = 0 To shown - 1
-            Dim sx As Integer = px + n * (sd + 2)
-            If sx + sd > r.Width - 5 Then Exit For
+            Dim row As Integer = n \ perRow
+            Dim col As Integer = n Mod perRow
+            Dim sx As Integer = px + col * (sd + 2)
+            Dim sy As Integer = py + row * (sd + 2)
             Using br As New SolidBrush(Color.FromArgb(70, 52, 30))
-                g.FillEllipse(br, sx, py, sd, sd)
+                g.FillEllipse(br, sx, sy, sd, sd)
             End Using
             Using br As New SolidBrush(Color.FromArgb(140, 110, 70))
-                g.FillEllipse(br, sx + 2, py + 1, sd \ 3, sd \ 3)
+                g.FillEllipse(br, sx + 2, sy + 1, sd \ 3, sd \ 3)
             End Using
         Next n
-        If sc > 30 Then
+
+        If sc > shown Then
             Using fnt As New Font("Segoe UI", 8.0!, FontStyle.Bold)
             Using br As New SolidBrush(Color.DarkRed)
-                g.DrawString("+" & (sc - 30).ToString(), fnt, br, CSng(r.Width - 30), CSng(py))
+                g.DrawString("+" & (sc - shown).ToString(), fnt, br, CSng(r.Width - 30), CSng(r.Height - 16))
             End Using
             End Using
         End If
@@ -740,6 +921,7 @@ Public Class Form1
             End If
 
             RefreshUI()
+            MaybeTriggerAIMove()
             Return
         End If
 
@@ -772,8 +954,8 @@ Public Class Form1
         End If
 
         boardPanel.Invalidate()
-        pnlScore1.Invalidate()
-        pnlScore2.Invalidate()
+        pnlScoreMe.Invalidate()
+        pnlScoreOpp.Invalidate()
     End Sub
 
     ' ============================================================
@@ -793,6 +975,48 @@ Public Class Form1
         Catch ex As Exception
             MessageBox.Show("Loi: " & ex.Message)
         End Try
+    End Sub
+
+    ' ============================================================
+    '  CHE DO CHOI VOI AI (khong qua mang)
+    ' ============================================================
+    Private Sub BtnPlayAI_Click(sender As Object, e As EventArgs)
+        isAIMode = True
+        isHost = True
+        localPlayer = 0
+        peer = Nothing
+        aiDifficulty = Math.Max(0, cboAIDifficulty.SelectedIndex)
+
+        game = New OAQGame()
+        ShowGamePanel()
+
+        Dim diffName As String = cboAIDifficulty.Items(aiDifficulty).ToString()
+        AppendLog("Ban choi voi AI (do kho: " & diffName & "). Ban la Player 1, di truoc.")
+        RefreshUI()
+    End Sub
+
+    ''' <summary>Neu dang o che do AI va den luot AI (Player 2), hen gio de AI tu di.</summary>
+    Private Sub MaybeTriggerAIMove()
+        If Not isAIMode Then Return
+        If game Is Nothing OrElse game.GameOver Then Return
+        If game.CurrentPlayer <> 1 Then Return
+        If animIsRunning Then Return
+        aiMoveTimer.Stop()
+        aiMoveTimer.Start()
+    End Sub
+
+    Private Sub AiMoveTimer_Tick(sender As Object, e As EventArgs)
+        aiMoveTimer.Stop()
+        If Not isAIMode Then Return
+        If game Is Nothing OrElse game.GameOver Then Return
+        If game.CurrentPlayer <> 1 Then Return
+        If animIsRunning Then Return
+
+        Dim outCell As Integer
+        Dim outDir As OAQGame.GameDirection
+        If game.ChooseAIMove(1, aiDifficulty, outCell, outDir) Then
+            StartAnimation(1, outCell, outDir)
+        End If
     End Sub
 
     Private Sub BtnJoin_Click(sender As Object, e As EventArgs)
@@ -815,6 +1039,8 @@ Public Class Form1
     Private Sub Peer_Disconnected()
         MessageBox.Show("Mat ket noi.")
         pnlGame.Visible = False : pnlConnect.Visible = True
+        pnlCardMe.Visible = False : pnlCardOpp.Visible = False : pnlChat.Visible = False
+        pnlScoreMe.Visible = False : pnlScoreOpp.Visible = False
     End Sub
 
     Private Sub Peer_LineReceived(line As String)
@@ -881,8 +1107,8 @@ Public Class Form1
                             animHighlight = cellI
                     End Select
                     boardPanel.Invalidate()
-                    pnlScore1.Invalidate()
-                    pnlScore2.Invalidate()
+                    pnlScoreMe.Invalidate()
+                    pnlScoreOpp.Invalidate()
                 End If
             End If
         ElseIf line.StartsWith("MOVEREQ:") Then
@@ -918,11 +1144,22 @@ Public Class Form1
                     StartAnimation(p, si, dir)
                 End If
             End If
+        ElseIf line.StartsWith("CHAT:") Then
+            Dim payload As String = line.Substring(5)
+            Dim firstColon As Integer = payload.IndexOf(":"c)
+            If firstColon >= 0 Then
+                Dim tag As String = payload.Substring(0, firstColon)
+                Dim msg As String = payload.Substring(firstColon + 1)
+                AppendChat(tag & ": " & msg)
+            End If
         End If
     End Sub
 
     Private Sub ShowGamePanel()
         pnlConnect.Visible = False : pnlGame.Visible = True
+        pnlCardMe.Visible = True : pnlCardOpp.Visible = True : pnlChat.Visible = True
+        pnlScoreMe.Visible = True : pnlScoreOpp.Visible = True
+        lstChat.Items.Clear()
         lblYouAre.Text = "Ban la: " & If(localPlayer = 0, "Player 1 (Host)", "Player 2 (Khach)")
         BuildCellRects()   ' rebuild layout theo localPlayer
         RefreshUI()
@@ -951,12 +1188,15 @@ Public Class Form1
             lblTurn.Text = "Ket thuc!"
         ElseIf myTurn Then
             lblTurn.Text = "Luot cua BAN - click o roi chon huong"
+        ElseIf isAIMode Then
+            lblTurn.Text = "AI dang suy nghi..."
         Else
             lblTurn.Text = "Luot cua doi thu..."
         End If
         boardPanel.Invalidate()
-        pnlScore1.Invalidate()
-        pnlScore2.Invalidate()
+        pnlScoreMe.Invalidate()
+        pnlScoreOpp.Invalidate()
+        UpdateCardInfo()
     End Sub
 
     Private Sub CheckAndShowGameOver()
